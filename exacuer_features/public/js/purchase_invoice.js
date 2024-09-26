@@ -1,25 +1,49 @@
 frappe.ui.form.on('Purchase Invoice', {
     custom_is_tcs: function(frm) {
         if (frm.doc.custom_is_tcs) {
+            // Automatically uncheck 'custom_tcs_without_gst' when 'custom_is_tcs' is checked
+            frm.set_value('custom_tcs_without_gst', 0);
             calculate_tcs_and_update_taxes(frm);
         } else {
-            remove_tcs_rows(frm);
+            // Check if both fields are unchecked
+            if (!frm.doc.custom_tcs_without_gst) {
+                clear_tcs_percentage_if_both_unchecked(frm);
+            } else {
+                remove_tcs_rows(frm);
+            }
         }
     },
     custom_tcs_percentage_: function(frm) {
-        if (frm.doc.custom_is_tcs|| frm.doc.custom_tcs_percentage_ === '') {
-            calculate_tcs_and_update_taxes(frm);
-        }else if (frm.doc.custom_is_tcs) {
+        if (!frm.doc.custom_tcs_percentage_ || frm.doc.custom_tcs_percentage_ === '') {
+            // If TCS percentage is removed, clear all TCS-related changes
+            remove_tcs_rows(frm);
+        } else if (frm.doc.custom_is_tcs) {
             // If TCS percentage is set and TCS is checked
             calculate_tcs_and_update_taxes(frm);
         }
     },
     custom_tcs_without_gst: function(frm) {
-        if (frm.doc.custom_is_tcs) {
+        if (frm.doc.custom_tcs_without_gst) {
+            // Automatically uncheck 'custom_is_tcs' when 'custom_tcs_without_gst' is checked
+            frm.set_value('custom_is_tcs', 0);
             calculate_tcs_and_update_taxes(frm);
-        } 
+        } else {
+            // Check if both fields are unchecked
+            if (!frm.doc.custom_is_tcs) {
+                clear_tcs_percentage_if_both_unchecked(frm);
+            }
+        }
     },
 });
+
+// Function to clear the TCS percentage if both checkboxes are unchecked
+function clear_tcs_percentage_if_both_unchecked(frm) {
+    if (!frm.doc.custom_is_tcs && !frm.doc.custom_tcs_without_gst) {
+        frm.set_value('custom_tcs_percentage_', null);  // Clear TCS percentage if both are unchecked
+        frm.set_value('custom_taxes_and_charges_collection_inr', 0);  // Reset custom TCS amount
+        frm.refresh_field('taxes');
+    }
+}
 
 // This event triggers when any field in the child table (Items) changes.
 frappe.ui.form.on('Purchase Invoice Item', {
@@ -58,26 +82,21 @@ frappe.ui.form.on('Purchase Invoice Item', {
 });
 
 function update_tcs_on_item_change(frm, cdt, cdn) {
-    if (frm.doc.custom_is_tcs) {
-        console.log('Item changed, calculating TCS...');
+    if (frm.doc.custom_is_tcs || frm.doc.custom_tcs_without_gst) {
         calculate_tcs_and_update_taxes(frm);
     }
 }
 
 function calculate_tcs_and_update_taxes(frm) {
-    console.log('Starting TCS calculation...');
     if (frm.doc.custom_tcs_percentage_) {
         frappe.db.get_value('TCS', frm.doc.custom_tcs_percentage_, ['tcs_percentage', 'account'], (r) => {
             if (r && r.tcs_percentage && r.account) {
                 let tcs_percentage = r.tcs_percentage;
                 let account_head = r.account;
 
-                console.log(`TCS Percentage: ${tcs_percentage}`);
-                console.log(`Account Head: ${account_head}`);
-
                 let total_amount = frm.doc.total || 0;
-                console.log(`Total Amount: ${total_amount}`);
 
+                // Skip GST amounts if custom_tcs_without_gst is checked
                 let total_gst_amount = 0;
                 if (!frm.doc.custom_tcs_without_gst) {
                     frm.doc.items.forEach(function(item) {
@@ -89,31 +108,29 @@ function calculate_tcs_and_update_taxes(frm) {
                     });
                 }
 
-                console.log(`Total GST Amount from Items: ${total_gst_amount}`);
-
                 let combined_amount = total_amount + total_gst_amount;
-                console.log(`Combined Amount (Total + GST): ${combined_amount}`);
-
                 let custom_taxes_and_charges_collection_inr = (combined_amount * tcs_percentage) / 100;
-                console.log(`Calculated TCS Amount: ${custom_taxes_and_charges_collection_inr}`);
 
                 // Directly set the calculated value without refreshing the entire form
                 frm.set_value('custom_taxes_and_charges_collection_inr', custom_taxes_and_charges_collection_inr);
 
                 // Check if a TCS row already exists
                 let tcs_row_exists = false;
+                let previous_total = 0;  // Initialize for cumulative total calculation
+                
                 frm.doc.taxes.forEach(function(row) {
                     if (row.description && row.description.includes('TCS')) {
-                        console.log('Updating existing TCS row...');
                         // Update the existing TCS row
-                        frappe.model.set_value(row.doctype, row.name, 'tax_amount', custom_taxes_and_charges_collection_inr);
-                        frappe.model.set_value(row.doctype, row.name, 'rate', tcs_percentage);
+                        row.tax_amount = custom_taxes_and_charges_collection_inr;
+                        row.rate = tcs_percentage;
                         tcs_row_exists = true;
                     }
+                    // Calculate the cumulative total
+                    row.total = previous_total + row.tax_amount;
+                    previous_total = row.total;  // Update previous total for the next row
                 });
 
                 if (!tcs_row_exists) {
-                    console.log('No existing TCS row, adding new...');
                     // Add new tax row without form refresh
                     let new_tax_row = frm.add_child('taxes');
                     
@@ -125,14 +142,10 @@ function calculate_tcs_and_update_taxes(frm) {
                     new_tax_row.add_deduct_tax = 'Add';
                     new_tax_row.rate = tcs_percentage;
                     new_tax_row.total = combined_amount;
-                   
                 }
-                
 
                 // Refresh only the taxes field to reflect changes in the taxes table
                 frm.refresh_field('taxes');
-
-                console.log('TCS calculation complete.');
             }
         });
     }
@@ -143,9 +156,12 @@ function remove_tcs_rows(frm) {
         return row.description.indexOf('TCS') === -1;
     });
 
-    frm.set_value('custom_tcs_percentage_', null);
-    frm.set_value('custom_taxes_and_charges_collection_inr', 0);
-    frm.refresh_field('taxes');
+    frm.set_value('custom_taxes_and_charges_collection_inr', 0);  // Reset custom TCS amount
 
-    console.log('TCS rows removed.');
+    // Only clear 'custom_tcs_percentage_' if both 'custom_is_tcs' and 'custom_tcs_without_gst' are unchecked
+    if (!frm.doc.custom_is_tcs && !frm.doc.custom_tcs_without_gst) {
+        frm.set_value('custom_tcs_percentage_', null);  
+    }
+
+    frm.refresh_field('taxes');
 }
