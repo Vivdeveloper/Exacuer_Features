@@ -242,3 +242,18 @@ app_license = "mit"
 # 	"Logging DocType Name": 30  # days to retain logs
 # }
 
+fixtures = [
+    {"doctype": "Custom Field", "filters": [["dt", "in", ["Purchase Invoice", "Sales Order", "Sales Invoice", "Purchase Order", "Delivery Note", "Quotation", "Purchase Receipt"]]]}
+]
+
+
+
+doctype_js = {
+    "Purchase Invoice": "public/js/purchase_invoice.js",
+    "Purchase Order": "public/js/po.js",
+    "Sales Order": "public/js/so.js",
+    "Sales Invoice": "public/js/si.js",
+    "Delivery Note": "public/js/dn.js",
+    "Quotation":"public/js/quotation.js",
+    'Purchase Receipt':"public/js/pr.js"
+}
