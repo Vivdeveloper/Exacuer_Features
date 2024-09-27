@@ -1,8 +1,11 @@
-// Copyright (c) 2024, swapnil and contributors
-// For license information, please see license.txt
-
-// frappe.ui.form.on("TCS", {
-// 	refresh(frm) {
-
-// 	},
-// });
+frappe.ui.form.on('TCS', {
+    company: function(frm) {
+        frm.set_query('account', function() {
+            return {
+                filters: {
+                    'company': frm.doc.company
+                }
+            };
+        });
+    }
+});
