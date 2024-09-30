@@ -6,9 +6,8 @@
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
-  "company",
-  "account",
-  "tcs_percentage"
+  "tcs_percentage",
+  "accounts"
  ],
  "fields": [
   {
@@ -18,21 +17,15 @@
    "precision": "2"
   },
   {
-   "fieldname": "account",
-   "fieldtype": "Link",
-   "label": "Account",
-   "options": "Account"
-  },
-  {
-   "fieldname": "company",
-   "fieldtype": "Link",
-   "label": "Company",
-   "options": "Company"
+   "fieldname": "accounts",
+   "fieldtype": "Table",
+   "label": "Accounts",
+   "options": "TCS ACCOUNTS"
   }
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2024-09-27 10:10:55.650611",
+ "modified": "2024-09-28 17:58:42.641603",
  "modified_by": "Administrator",
  "module": "Exacuer Features",
  "name": "TCS",

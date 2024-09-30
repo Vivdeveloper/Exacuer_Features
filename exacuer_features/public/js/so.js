@@ -89,71 +89,78 @@ function update_tcs_on_item_change(frm, cdt, cdn) {
 
 function calculate_tcs_and_update_taxes(frm) {
     if (frm.doc.custom_tcs_percentage) {
-        frappe.db.get_value('TCS', frm.doc.custom_tcs_percentage, ['tcs_percentage', 'account'], (r) => {  
-            if (r && r.tcs_percentage && r.account) {
-                let tcs_percentage = r.tcs_percentage;
-                let account_head = r.account;
+        // Fetch the TCS percentage and filter by company
+        frappe.db.get_doc('TCS', frm.doc.custom_tcs_percentage).then((doc) => {
+            if (doc) {
+                let tcs_percentage = doc.tcs_percentage;
+                let company = frm.doc.company;
 
-                let total_amount = frm.doc.total || 0;
-
-                // Skip GST amounts if custom_tcs_without_gst is checked
-                let total_gst_amount = 0;
-                if (!frm.doc.custom_tcs_without_gst) {
-                    frm.doc.items.forEach(function(item) {
-                        total_gst_amount += (item.igst_amount || 0) + 
-                                            (item.cgst_amount || 0) + 
-                                            (item.sgst_amount || 0) + 
-                                            (item.cess_amount || 0) + 
-                                            (item.cess_non_advol_amount || 0);
-                    });
-                }
-
-                let combined_amount = total_amount + total_gst_amount;
-
-                let custom_taxes_and_charges_collection_inr = (combined_amount * tcs_percentage) / 100;
-
-                // Directly set the calculated value without refreshing the entire form
-                frm.set_value('custom_taxes_and_charges_collection_inr', custom_taxes_and_charges_collection_inr);
-
-                // Check if a TCS row already exists
-                let tcs_row_exists = false;
-                let previous_total = 0;  // Initialize for cumulative total calculation
-                
-                frm.doc.taxes.forEach(function(row) {
-                    if (row.description && row.description.includes('TCS')) {
-                        // Update the existing TCS row
-                        row.tax_amount = custom_taxes_and_charges_collection_inr;
-                        row.rate = tcs_percentage;
-                        tcs_row_exists = true;
+                // Find the account head in the child table based on the current company's name
+                let account_head = null;
+                doc.accounts.forEach(function(account) {
+                    if (account.company === company) {
+                        account_head = account.account;
                     }
-                    // Calculate the cumulative total
-                    row.total = previous_total + row.tax_amount;
-                    previous_total = row.total;  // Update previous total for the next row
                 });
 
-                if (!tcs_row_exists) {
-                    // Add new tax row without form refresh
-                    let new_tax_row = frm.add_child('taxes');
-                    
-                    // Directly assign values to the new tax row object
-                    new_tax_row.charge_type = 'Actual';
-                    new_tax_row.account_head = account_head;
-                    new_tax_row.description = `TCS @ ${tcs_percentage}%`; // Set description with TCS percentage
-                    new_tax_row.tax_amount = custom_taxes_and_charges_collection_inr;
-                    new_tax_row.add_deduct_tax = 'Add';
-                    new_tax_row.rate = tcs_percentage;
+                // If account_head is found, proceed with TCS calculation
+                if (account_head) {
+                    let total_amount = frm.doc.total || 0;
 
-                    // Calculate cumulative total for the new row
-                    new_tax_row.total = previous_total + new_tax_row.tax_amount;
-                    previous_total = new_tax_row.total;  // Update previous total for future rows
+                    // Skip GST amounts if custom_tcs_without_gst is checked
+                    let total_gst_amount = 0;
+                    if (!frm.doc.custom_tcs_without_gst) {
+                        frm.doc.items.forEach(function(item) {
+                            total_gst_amount += (item.igst_amount || 0) + 
+                                                (item.cgst_amount || 0) + 
+                                                (item.sgst_amount || 0) + 
+                                                (item.cess_amount || 0) + 
+                                                (item.cess_non_advol_amount || 0);
+                        });
+                    }
+
+                    let combined_amount = total_amount + total_gst_amount;
+                    let custom_taxes_and_charges_collection_inr = (combined_amount * tcs_percentage) / 100;
+
+                    // Set the calculated TCS amount
+                    frm.set_value('custom_taxes_and_charges_collection_inr', custom_taxes_and_charges_collection_inr);
+
+                    // Check if a TCS row already exists in taxes table
+                    let tcs_row_exists = false;
+                    let previous_total = 0;
+
+                    frm.doc.taxes.forEach(function(row) {
+                        if (row.description && row.description.includes('TCS')) {
+                            row.tax_amount = custom_taxes_and_charges_collection_inr;
+                            row.rate = tcs_percentage;
+                            tcs_row_exists = true;
+                        }
+                        row.total = previous_total + row.tax_amount;
+                        previous_total = row.total;
+                    });
+
+                    // If no TCS row exists, add a new one
+                    if (!tcs_row_exists) {
+                        let new_tax_row = frm.add_child('taxes');
+                        new_tax_row.charge_type = 'Actual';
+                        new_tax_row.account_head = account_head;
+                        new_tax_row.description = `TCS @ ${tcs_percentage}%`;
+                        new_tax_row.tax_amount = custom_taxes_and_charges_collection_inr;
+                        new_tax_row.add_deduct_tax = 'Add';
+                        new_tax_row.rate = tcs_percentage;
+                        new_tax_row.total = previous_total + new_tax_row.tax_amount;
+                    }
+
+                    // Refresh the taxes field to reflect changes
+                    frm.refresh_field('taxes');
+                } else {
+                    frappe.msgprint(__('No account head found for the company: ' + company));
                 }
-
-                // Refresh only the taxes field to reflect changes in the taxes table
-                frm.refresh_field('taxes');
             }
         });
     }
 }
+
 
 function remove_tcs_rows(frm) {
     frm.doc.taxes = frm.doc.taxes.filter(function(row) {

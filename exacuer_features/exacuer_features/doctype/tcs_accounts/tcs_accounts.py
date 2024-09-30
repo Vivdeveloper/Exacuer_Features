@@ -5,7 +5,5 @@
 from frappe.model.document import Document
 
 
-class TCS(Document):
-	def autoname(self):
-		self.name = f"TCS-{self.tcs_percentage}"
-
+class TCSACCOUNTS(Document):
+	pass
