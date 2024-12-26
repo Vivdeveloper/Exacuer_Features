@@ -110,6 +110,7 @@ function calculate_tcs_and_update_taxes(frm) {
                     // Skip GST amounts if custom_tcs_without_gst is checked
                     let total_gst_amount = 0;
                     if (!frm.doc.custom_tcs_without_gst) {
+                        console.log("running");
                         frm.doc.items.forEach(function(item) {
                             total_gst_amount += (item.igst_amount || 0) + 
                                                 (item.cgst_amount || 0) + 
@@ -118,12 +119,23 @@ function calculate_tcs_and_update_taxes(frm) {
                                                 (item.cess_non_advol_amount || 0);
                         });
                     }
+                    if (!frm.doc.custom_tcs_without_gst){
+                        console.log("running",total_gst_amount);
+                        if(total_gst_amount==0){
+                            total_gst_amount = (total_amount*18)/100
+                        }
+                        console.log("running",total_gst_amount);
+                    }
+                    console.log(total_amount)
 
                     let combined_amount = total_amount + total_gst_amount;
+                    console.log(total_gst_amount);
+                    console.log(combined_amount,tcs_percentage);
                     let custom_taxes_and_charges_collection_inr = (combined_amount * tcs_percentage) / 100;
 
                     // Set the calculated TCS amount
                     frm.set_value('custom_taxes_and_charges_collection_inr', custom_taxes_and_charges_collection_inr);
+                    console.log(custom_taxes_and_charges_collection_inr,"test");
 
                     // Check if a TCS row already exists in taxes table
                     let tcs_row_exists = false;
